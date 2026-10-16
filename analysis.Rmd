@@ -1,0 +1,226 @@
+---
+title: "Race/ethnicity, county income, and survival in adult acute lymhoblastic leukemia"
+subtitle: "A SEER registry analysis, diagnoses 2010-2021"
+author: "Eshan Oad"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 9, fig.height = 5)
+library(tidyverse)
+library(survival)
+library(ggsurvfit)
+library(broom)
+dir.create("figures", showWarnings = FALSE)
+dir.create("output", showWarnings = FALSE)
+```
+
+```{r clean, include=FALSE}
+# Load the SEER*Stat export (not included in the repo; see README for access)
+raw <- read_delim("data/seer1.txt", delim = "\t", show_col_types = FALSE)
+n_raw <- nrow(raw)
+
+df <- raw %>%
+  rename(race = `Race and origin recode (NHW, NHB, NHAIAN, NHAPI, Hispanic)`) %>%
+  mutate(
+    survival_months = suppressWarnings(as.numeric(`Survival months`)),  # "Unknown" becomes NA
+    died = if_else(`Vital status recode (study cutoff used)` == "Dead", 1, 0),
+    age_start = parse_number(`Age recode with <1 year olds`),
+    age_group = case_when(
+      age_start < 40 ~ "20-39",
+      age_start < 60 ~ "40-59",
+      age_start < 75 ~ "60-74",
+      TRUE ~ "75+"
+    ),
+    income_tier = case_when(
+      `Median household income inflation adj to 2022` %in% c("< $40,000", "$40,000 - $44,999", "$45,000 - $49,999", "$50,000 - $54,999", "$55,000 - $59,999") ~ "Low",
+      `Median household income inflation adj to 2022` %in% c("$60,000 - $64,999", "$65,000 - $69,999", "$70,000 - $74,999", "$75,000 - $79,999", "$80,000 - $84,999") ~ "Middle",
+      `Median household income inflation adj to 2022` %in% c("$85,000 - $89,999", "$90,000 - $94,999", "$95,000 - $99,999", "$100,000 - $109,999", "$110,000 - $119,999", "$120,000+") ~ "High",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Exclusion counts, in order
+n_unknown_survival <- sum(is.na(df$survival_months))
+n_unknown_race <- sum(!is.na(df$survival_months) & df$race == "Non-Hispanic Unknown Race")
+n_missing_income <- sum(!is.na(df$survival_months) & df$race != "Non-Hispanic Unknown Race" & is.na(df$income_tier))
+
+df_model <- df %>%
+  filter(!is.na(survival_months), race != "Non-Hispanic Unknown Race", !is.na(income_tier)) %>%
+  mutate(
+    race = droplevels(fct_relevel(race, "Non-Hispanic White")),
+    income_tier = factor(income_tier, levels = c("High", "Middle", "Low")),
+    age_group = factor(age_group, levels = c("20-39", "40-59", "60-74", "75+"))
+  )
+
+n_final <- nrow(df_model)
+n_deaths <- sum(df_model$died)
+n_zero <- sum(df_model$survival_months == 0)
+```
+
+# Summary
+
+Using SEER cancer registry data, I analyzed 8,098 adults over the age of 20 diagnosed between 2010 and 2021 to evaluate whether race/ethnicity and county-level income impacted survival rates. Patients in lower-income counties exhibited a higher risk of death within the first two years of diagnosis; however, after two years, the survival gap between low- and high-income counties was no longer detectable. In contrast, Black and Hispanic patients experienced a higher risk of death compared to non-Hispanic White patients, with the disparity widening after the first two years. These results demonstrate associations, not causation, as the dataset lacked individual-level treatment information and relied on county-level rather than individual-level income data.
+
+# Question
+
+Do race/ethnicity and county-level income impact survival in U.S. adults diagnosed with acute lymphoblastic leukemia (ALL), and do the relationships stay constant over a follow-up?
+
+In current SEER research releases, individual insurance status is not available, so county-level median household income was used as the socioeconomic measure.
+
+# Data and cohort
+
+- **Source:** SEER Research Data (NCI), exported through SEER*Stat. The data is not in this repository as the data cannot be redistributed.
+- **Cohort:** adults over the age of 20, diagnosed with acute lymphoblastic leukmia (ALL) within the years of 2010-2021
+- **Exported cases:** `r n_raw`
+- **Excluded:** `r n_unknown_survival` with unknown survival time, `r n_unknown_race` with unknown race, `r n_missing_income` with missing county income.
+- **Final analytic cohort:** `r n_final` patients, `r n_deaths` deaths (all-cause).
+
+# Methods
+
+- **Outcome:** overall survival, months from diagnosis to death form any cause.
+- **Exposures:** race/ethnicity (SEER's five-category race-and-origin recode) and county median household income, grouped into Low (< $60k), Middle ($60k-$85k), and High ($85k+).
+- **Covariates:** sex and age group as stratification variables 
+- **Models:** Cox proportional hazard models, Kaplan-Meier curves by race/ethnicity. Scaled Schoenfeld residuals were used to check the proportional-hazards assumption, so main results come from Cox models for 0-24 months and 24+ months after diagnosis. 
+- **Data handling:** `r n_zero` patients had a recorded survival of 0 months. In the time-split models these were set to 0.5 months so they fall inside the first interval.
+
+# Results
+
+Cohort: The analysis consitsted of 8,098 patiens, with 4,390 deaths. 3,934 were non-Hispanic White, 2,795 were Hispanic, 714 were Asian or Pacific Islander, 563 were Black and 84 were Alaska Native or American Indian. 21% of the Hispanic patients were over the age of 60, compared to 51% of non-Hispanic White patients. The percent of patients living in low-income counties ranged from 2.4% (Asian/Pacific Islander) to 34.5% (Alaska Native/American Indian).
+
+Unadjusted Survival: Before the follow-up, Asian/Pacific Islander patients had the highest survival rate, while Black patients had the lowest. After the follow up, Hispanic patients had a higher survival rate than the non-Hispanic White patients. Due to a low patient count, Alaska Native/American Indian has large confidence bands. 
+
+Adjusted Model: After adjusting for age and sex, hazard of death was 33% higher for low-income vs. high-income counties, and 12% higher for middle-income counties. Compared with non-Hispanic White patients, the hazard of death was 20% greater for Hispanic patients, and 22% higher for Black patients. The intervals for Asian/Pacific Islander and Alaska Native/American Indian included 1. The proportion hazard assumption was not met for race or income so seperate models were fit for 0-24 months and 24+ months. 
+
+By period: In the first 24 months, the HR for low-income counties was 1.4, then after 24 months it decreased to 1.04. Race hazard ratios increased after 24 months, Hispanic went from 1.14 to 1.52, and Black went from 1.17 to 1.50.
+
+## Cohort characteristics
+
+```{r table1}
+table1 <- df_model %>%
+  group_by(race) %>%
+  summarize(
+    n = n(),
+    deaths = sum(died),
+    pct_dead = round(100 * mean(died), 1),
+    pct_low_income = round(100 * mean(income_tier == "Low"), 1),
+    pct_age_60plus = round(100 * mean(age_group %in% c("60-74", "75+")), 1),
+    pct_male = round(100 * mean(Sex == "Male"), 1)
+  )
+write_csv(table1, "output/table1.csv")
+knitr::kable(table1, caption = "Cohort characteristics by race/ethnicity")
+```
+
+## Unadjusted survival
+
+```{r km}
+km_race <- survfit2(Surv(survival_months, died) ~ race, data = df_model)
+
+km_plot <- ggsurvfit(km_race) +
+  add_confidence_interval() +
+  labs(x = "Months since diagnosis", y = "Overall survival probability") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(nrow = 3), fill = guide_legend(nrow = 3))
+
+ggsave("figures/km_race.png", km_plot, width = 9, height = 6, dpi = 300)
+km_plot
+```
+
+## Adjusted survival, whole follow-up
+
+```{r cox-overall}
+cox_overall <- coxph(Surv(survival_months, died) ~ race + income_tier + Sex + strata(age_group),
+                     data = df_model)
+
+tidy(cox_overall, exponentiate = TRUE, conf.int = TRUE) %>%
+  mutate(across(c(estimate, conf.low, conf.high), ~ round(.x, 2)), p.value = format.pval(p.value, digits = 2, eps = 1e-4)) %>%
+  select(term, hazard_ratio = estimate, conf.low, conf.high, p.value) %>%
+  knitr::kable(caption = "Cox model over full follow-up (age-stratified)")
+
+cox.zph(cox_overall)
+```
+
+The proportional-hazards test above indicates the effects change over follow-up, which motivates the time-split models.
+
+## Adjusted survival by follow-up period
+
+```{r cox-split}
+df_split <- df_model %>%
+  mutate(survival_months = survival_months + 0.5) %>%
+  select(survival_months, died, race, income_tier, Sex, age_group) %>%
+  survSplit(Surv(survival_months, died) ~ ., data = ., cut = 24, episode = "period")
+
+cox_early <- coxph(Surv(tstart, survival_months, died) ~ race + income_tier + Sex + strata(age_group),
+                   data = filter(df_split, period == 1))
+cox_late <- coxph(Surv(tstart, survival_months, died) ~ race + income_tier + Sex + strata(age_group),
+                  data = filter(df_split, period == 2))
+
+hr_all <- bind_rows(
+  tidy(cox_early, exponentiate = TRUE, conf.int = TRUE) %>% mutate(period = "0-24 months"),
+  tidy(cox_late, exponentiate = TRUE, conf.int = TRUE) %>% mutate(period = "24+ months")
+)
+
+hr_all %>%
+  mutate(across(c(estimate, conf.low, conf.high), ~ round(.x, 2)), p.value = format.pval(p.value, digits = 2, eps = 1e-4)) %>%
+  select(period, term, hazard_ratio = estimate, conf.low, conf.high, p.value) %>%
+  knitr::kable(caption = "Cox models by follow-up period (age-stratified)")
+write_csv(hr_all, "output/hazard_ratios_by_period.csv")
+```
+
+```{r forest, fig.height=5.5}
+hr_plot <- hr_all %>%
+  filter(term != "SexMale") %>%
+  mutate(term = str_remove_all(term, "^race|^income_tier|Non-Hispanic "),
+         term = fct_rev(fct_inorder(term)))
+
+forest <- ggplot(hr_plot, aes(x = estimate, y = term, color = period)) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  geom_pointrange(aes(xmin = conf.low, xmax = conf.high), position = position_dodge(width = 0.5)) +
+  scale_x_log10(breaks = c(0.75, 1, 1.5, 2, 3)) +
+  labs(x = "Hazard ratio (log scale), 95% CI", y = NULL, color = NULL,
+       title = "Hazard of death by race/ethnicity and county income, by follow-up period",
+       caption = "Reference: Non-Hispanic White, High income. Race groups other than Hispanic are non-Hispanic. Adjusted for sex; stratified by age group.") +
+  theme_minimal()
+
+ggsave("figures/forest_plot.png", forest, width = 9, height = 5, dpi = 300)
+forest
+```
+
+# Discussion
+
+This analysis of adults with ALL determined that patients living in lower-income counties and being of Hispanic or Black race/ethnicity were associated with higher risk of death. After adjusting for county income, age and sex, the race/ethnicity differences remained, indicating that income-level alone does not attribute to the risk of death. 
+
+The majorty of income assosiated was cenetered in data collected 24 months after diagnosis. One possible explanation for this would be that in early stages, survival is laregly based on the speed and quality of treatment a patient can get, which may differ based on access to care. Additoanly, the data analyzed after 24 months is condiatoinal on the patient surviving 24 months, which could lead to other differences that mask income differences. 
+
+When looking at the unadjusted curve, Hispanic patients surived longer than non-Hispanic White paitents, but after adjustment, they show a higher risk. In this cohort, Hispanic patints were much younger, with only 21% being over the age of 60, while the non-Hispanic White cohort had 51% over the age of 60. Younger patinets, on average, live longer, which is likely the reaon why the unadjusted curve seemeed better, when comparing patinetes in teh same age group, that advantage was dropped. Both Hispanic and Black patinets saw an increase in the harazrd ratio 24 months after diagnosis, giong from aroudn 1.15 to 1.5. The Hispanic intervals don't overlap, but the difference was not formally tested. Explanations, such as differneces in treatment access, and disease subtypes can't be tested with this data. 
+
+Earlier SEER analysis of adult acute leukemia have also determined a higher risk of death amongst Hispanic and Black patients, specifically reporting hazard ratios around 1.45 in both groups (Patel et al., 2012). My estimates, around 1.2, could be smaller due to reasons such as: time period, age mix or adjustment. In childhood ALL, socioeconomic status has been reported to explain these gaps (Xu et al., 2021), but in this adult cohort, differences remained after adjusting for county income. One possible driver, differences in tumor biology (Xu et al., 2021), can not be examined with this data. 
+
+This study does have notebaly lmiations. One of the most prevalnt would be that socieocnonic facotrs wer etested through county-income, meaning low-income indivdal may be presnet in high-income counties and vice versa. The data alos lacks informaoitn regarding factors that heavily effect ALL and its outcome in patients, such as treatment, disease subtype, and insurance. The Alaska Native/American Indian cohort is too small to make firm judgements. Future work regarding treatment and indival-income levels could better test the differnece and fill gaps in understanding. 
+
+# Limitations
+
+- County-level income is an area-level measure and does not describe individual patients.
+- Due to being absent in this extract, the following trends cannot be attributed to the gaps: individual insurance status, treatment, transplant, and clinical or genetic risk features.
+- The period-specific data results are exploratory as the proportional-hazards assumption failed for the full-follow-up model.
+- Results after 14 months may be affected by selection as they are conditional on surviving 24 months.
+- The American Indian/Alaska Native group is small, so estimates are imprecise.
+- Case-specific survival was not analyzed and overall survival is used.
+- Race and ethnicity are registry-recorded categories.
+- The extract lacks many points that strongly affect ALL outcomes, such as B vs T-cell subtype, cytogenetic status, and treatment information.
+
+# Reproducibility
+
+```{r session}
+sessionInfo()
+```
+
+# References
+- Patel MI, Ma Y, Mitchell BS, Rhoads KF. Understanding disparities in leukemia: a national study. Cancer Causes Control. 2012;23:1831-1837.
+- Xu K, Feng Q, de Smith AJ. Disparities in acute lymphoblastic leukemia risk and survival across the lifespan in the United States of America. J Transl Genet Genom. 2021;5:218-239.
