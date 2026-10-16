@@ -1,4 +1,4 @@
-# Race/ethnicity, county income, and survival in adult leukemia (SEER, 2010-2021)
+# Race/ethnicity, county income, and survival in adult acute lymphoblastic leukemia (SEER, 2010-2021)
 
 An independent analysis of whether race/ethnicity and neighborhood income are associated with survival after a leukemia diagnosis, and whether those associations change over follow-up.
 
@@ -6,25 +6,28 @@ An independent analysis of whether race/ethnicity and neighborhood income are as
 
 ## Question
 
-Among U.S. adults diagnosed with leukemia **[CONFIRM subtype]** between 2010 and 2021, is overall survival associated with race/ethnicity and county-level median household income, and do those associations stay constant over time?
+Is the overall survival of U.S. adults over the age of 20 diagnosed with acute lymphoblastic leukemia (ALL) between 2010 and 2021 associated with race/ethnicity and county-level income levels, and do these relationships stay constant 24 months after diagnosis?
 
 ## Main findings
 
-**[Fill in after you finish the Discussion section of the report. Write 3-4 plain sentences with the real numbers from the forest plot. Do not claim anything the intervals don't support.]**
+- **County income.** Patients living in low-income counties were assosiated with a 33% higher hazard of death in comparain to high-income counties (HR 1.33). This gap was mostly concentrated from 0-24 months, and was no longer detectable after 24 months.
+- **Race/ethnicity.** After adjusting for age, sex, and county income, Hispanic and Black patients had a higher hazard of death than non-Hispanic White patients (HR 1.20 and 1.22). These gaps grew after 24 months (HR 1.15 to 1.50).
+
+These are associations in registry data that lack treatment information, and income is measured at the county level, not for individual patients. This is an exploratory analysis.
 
 ![Forest plot](figures/forest_plot.png)
 
 ## Data
 
-SEER Research Data (National Cancer Institute), exported with SEER*Stat. SEER's data use agreement does not allow redistributing the data, so it is **not** included in this repository. To reproduce the analysis, request access at https://seer.cancer.gov/data/access.html, then export a case listing with these fields: sex, year of diagnosis, race and origin recode, age recode, median household income (inflation adjusted to 2022), SEER cause-specific death classification, survival months, and vital status recode. Save it as `data/seer1.txt` (tab-delimited, labels without quotes, variable names before data).
+The cohort data comes from SEER Research Data from the National Cancer Institute and was exported through SEER**Stat. SEER's data use agreement does not allow redistribution of the data, so to reproduce the analysis, request data access through the SEER directory, then export a case listing with the following fields: sex, year of diagnosis, race, recode, median household income, SEER cause-specific death classification, survival months, and vital status recode. 
 
 ## Methods in brief
 
-- Cohort: adults aged 20+, diagnosed 2010-2021, exported from 17 SEER registries.
+- Cohort: adults over the age of 20 diagnosed with acute lymphoblastic leukemia, diagnosed between 2010 and 2021.
 - Kaplan-Meier curves by race/ethnicity.
 - Cox proportional hazards models adjusted for sex and stratified by age group.
-- The proportional-hazards assumption failed, so effects are reported separately for 0-24 and 24+ months after diagnosis (an exploratory cut point chosen after inspecting residual plots).
-- Individual insurance status is not available in current SEER releases, so county income is used as the socioeconomic measure.
+- Effects are reported separately for 0-24 months and 24+ months as the proportional-hazards assumption failed. 
+- In current SEER releases, individual insurance data is not available, so county income-level was used as the socioeconomic factor. 
 
 ## Repository structure
 
@@ -44,12 +47,4 @@ data/            # not tracked; place seer1.txt here
 
 ## Limitations
 
-County income is an area-level measure, the data lack treatment and clinical information, results after 24 months are conditional on survival to that point, and the time split was chosen after viewing the data. See the Limitations section of the report for the full list.
-
-## Transparency note
-
-I designed the question, exported the data, and wrote the interpretation. The analysis code was developed with the help of Claude (Anthropic) while I was learning R. I'm working through R fundamentals in parallel and can walk through any part of the code.
-
-## Author
-
-Shane, undergraduate, pre-medical track. Contact: **[your email]**
+The use of county-level income as a socioeconomic factor, as it is an area-level rather than looking at the individual patients. Results after 24 months are conditional on the survival of at least 24 months. See the Limitations section of the report for a full list.
